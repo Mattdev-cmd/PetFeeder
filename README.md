@@ -78,6 +78,7 @@ pip install -r requirements.txt
 # On Raspberry Pi, also install GPIO and enable I2C:
 pip install RPi.GPIO
 sudo raspi-config  # Enable I2C under Interface Options
+sudo usermod -aG gpio pi
 ```
 
 ### 3. Run the Application
