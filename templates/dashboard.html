@@ -1,0 +1,310 @@
+</main>
+
+<!-- ═══ AI Chatbox Widget ═══ -->
+<div class="chatbot-widget" id="chatbotWidget" style="position:fixed;bottom:24px;right:24px;width:340px;max-width:90vw;z-index:1000;box-shadow:0 2px 16px #0002;background:#fff;border-radius:12px;overflow:hidden;">
+    <div style="background:#1a8a6e;color:#fff;padding:12px 16px;font-weight:bold;display:flex;align-items:center;justify-content:space-between;">
+        <span>💬 AI Chatbox</span>
+        <button id="closeChatbot" style="background:none;border:none;color:#fff;font-size:18px;cursor:pointer;">&times;</button>
+    </div>
+    <div id="chatMessages" style="height:260px;overflow-y:auto;padding:12px;background:#f8f8f8;font-size:15px;"></div>
+    <form id="chatForm" style="display:flex;border-top:1px solid #eee;">
+        <input id="chatInput" type="text" placeholder="Ask about pets or anything..." autocomplete="off" style="flex:1;padding:10px;border:none;font-size:15px;outline:none;">
+        <button type="submit" style="background:#1a8a6e;color:#fff;border:none;padding:0 18px;font-size:15px;cursor:pointer;">Send</button>
+    </form>
+    <div style="padding:6px 12px;font-size:12px;color:#888;text-align:right;">
+        <a href="#" style="display:none;">Get Gemini API key</a>
+    </div>
+</div>
+
+{% extends "base.html" %}
+{% block title %}Dashboard — Automatic Pet Feeder{% endblock %}
+{% block body_class %}dashboard-page{% endblock %}
+
+{% block content %}
+<!-- ═══ Header ═══ -->
+<header class="top-bar">
+    <div class="top-bar-left">
+        <span class="header-paws"></span>
+        <h1 class="header-title">Automatic Pet Feeder Dashboard</h1>
+    </div>
+    <div class="top-bar-right">
+        <button class="icon-btn" id="profileBtn" title="Profile">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        </button>
+        <span class="separator">|</span>
+        <a href="{{ url_for('logout') }}" class="btn btn-logout">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            Logout
+        </a>
+    </div>
+</header>
+
+<!-- ═══ Dashboard Grid ═══ -->
+<main class="dashboard-grid">
+
+    <!-- ── Welcome Card ── -->
+    <section class="card welcome-card">
+        <h2>Welcome, {{ user.username }}!</h2>
+        <div class="pet-profile">
+            <div class="pet-avatar">
+                {% if pet.photo_url %}
+                <img src="{{ pet.photo_url }}" alt="{{ pet.name }}">
+                {% else %}
+                <div class="avatar-placeholder">🐕</div>
+                {% endif %}
+            </div>
+            <div class="pet-info">
+                <h3>{{ pet.name }}</h3>
+                <p>{{ pet.breed }}{% if pet.breed %},{% endif %} Age: 
+                    {% set years = pet.age // 12 %}
+                    {% set months = pet.age % 12 %}
+                    {% if years > 0 %}{{ years }} year{{ 's' if years > 1 }}{% endif %}
+                    {% if months > 0 %} {{ months }} month{{ 's' if months > 1 }} old{% endif %}
+                    {% if years == 0 and months == 0 %}N/A{% endif %}
+                </p>
+                {% if pet.weight_kg %}
+                <p class="pet-weight">{{ pet.weight_kg }} kg</p>
+                {% endif %}
+            </div>
+        </div>
+        <button class="btn btn-sm btn-outline" id="editPetBtn">Edit Pet</button>
+    </section>
+
+    <!-- ── Next Feeding Time Card ── -->
+    <section class="card next-feed-card">
+        <h2>Next Feeding Time</h2>
+        <div class="clock-display">
+            <div class="clock-icon">
+                <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="#1a8a6e" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            </div>
+            <div class="time-text">
+                <span class="time-big" id="nextFeedTime">{{ next_time }}</span>
+            </div>
+        </div>
+        <p class="scheduled-label">Scheduled: {{ next_time }}</p>
+    </section>
+
+    <!-- ── Food Level Card ── -->
+    <section class="card food-level-card">
+        <h2>Food Level</h2>
+        <div class="feeder-visual">
+            <div class="feeder-icon">
+                <svg viewBox="0 0 100 120" width="100" height="120">
+                    <rect x="20" y="10" width="60" height="90" rx="8" fill="#e8edf2" stroke="#5a7a9a" stroke-width="2"/>
+                    <rect x="25" y="15" width="50" height="80" rx="5" fill="#f5f5f5"/>
+                    <rect x="25" y="{{ 95 - (food_level * 0.8) }}" width="50" height="{{ food_level * 0.8 }}" rx="5" fill="#d4a44a"/>
+                    <circle cx="75" cy="60" r="6" fill="white" stroke="#5a7a9a" stroke-width="1.5"/>
+                    <rect x="35" y="100" width="30" height="12" rx="4" fill="#5a7a9a"/>
+                </svg>
+            </div>
+        </div>
+        <div class="food-badge">
+            <span class="food-label" id="foodLabel">{{ food_label }}</span>
+            <span class="food-pct" id="foodPct">{{ food_level }}%</span>
+        </div>
+    </section>
+
+    <!-- ── Set Feeding Schedule Card ── -->
+    <section class="card schedule-card">
+        <h2>Set Feeding Schedule</h2>
+        <div class="schedule-form">
+            <label>Feed Time:</label>
+            <div class="time-picker">
+                <input type="number" id="schedHour" min="1" max="12" value="08" class="time-input">
+                <span class="time-sep">:</span>
+                <input type="number" id="schedMin" min="0" max="59" value="00" class="time-input">
+                <select id="schedAmPm" class="ampm-select">
+                    <option value="AM">AM</option>
+                    <option value="PM">PM</option>
+                </select>
+            </div>
+            <button class="btn btn-primary" id="saveScheduleBtn">Save Schedule</button>
+        </div>
+        <!-- Active schedules list -->
+        <div class="schedules-list" id="schedulesList">
+            {% for s in schedules %}
+            <div class="schedule-item" data-id="{{ s.id }}">
+                <span>{{ format_time_12h(s.feed_time) }}</span>
+                <button class="btn-remove" data-id="{{ s.id }}" title="Remove">&times;</button>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <!-- ── Manual Feeding Card ── -->
+    <section class="card manual-feed-card">
+        <h2>Manual Feeding</h2>
+        <div class="manual-feed-img">
+            <svg viewBox="0 0 200 160" width="200" height="160">
+                <rect x="50" y="10" width="100" height="100" rx="12" fill="#3a5a7a" />
+                <rect x="60" y="20" width="80" height="60" rx="8" fill="#4a6a8a" />
+                <ellipse cx="100" cy="80" rx="15" ry="4" fill="#d4a44a" />
+                <circle cx="140" cy="60" r="8" fill="white" stroke="#3a5a7a" stroke-width="1.5"/>
+                <rect x="70" y="110" width="60" height="18" rx="6" fill="#c0c8d0"/>
+                <ellipse cx="100" cy="135" rx="40" ry="10" fill="#e8e0d0" stroke="#b0a890" stroke-width="1"/>
+                <ellipse cx="100" cy="130" rx="30" ry="6" fill="#d4a44a"/>
+            </svg>
+        </div>
+        <button class="btn btn-primary btn-feed-now" id="feedNowBtn">Feed Now</button>
+    </section>
+
+    <!-- ── Feeding Logs Card ── -->
+    <section class="card logs-card">
+        <h2>Feeding Logs</h2>
+        <ul class="logs-list" id="logsList">
+            {% for log in logs %}
+            <li>
+                <strong>{{ log.fed_at.strftime('%b %d') if log.fed_at else '' }}</strong>
+                – {{ log.fed_at.strftime('%I:%M %p') if log.fed_at else '' }}
+                – <em>{{ log.feed_type }}</em>
+            </li>
+            {% endfor %}
+            {% if not logs %}
+            <li class="empty-state">No feeding logs yet.</li>
+            {% endif %}
+        </ul>
+        <a href="#" class="view-more" id="viewMoreLogs">View More ›</a>
+    </section>
+
+    <!-- ── AI Suggestions Card ── -->
+    <section class="card ai-card">
+        <h2>🤖 AI Suggestions</h2>
+        <div class="ai-status-badge {{ ai.overall_status }}" id="aiOverallStatus">
+            {{ ai.overall_status | upper }}
+        </div>
+        <div class="ai-portion" id="aiPortion">
+            <strong>Portion Advice:</strong>
+            <p>{{ ai.portion_advice }}</p>
+        </div>
+        <div class="ai-vet" id="aiVet">
+            <strong>🩺 Vet Recommendation:</strong>
+            <p>{{ ai.vet_recommendation }}</p>
+        </div>
+        {% if ai.warnings %}
+        <div class="ai-warnings" id="aiWarnings">
+            <strong>⚠️ Warnings:</strong>
+            <ul>
+                {% for w in ai.warnings %}
+                <li>{{ w }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        <div class="ai-actions" style="display:flex;gap:8px;margin-top:12px;">
+            <button class="btn btn-sm btn-outline" id="refreshAiBtn">Refresh Suggestions</button>
+            <button class="btn btn-sm" id="applyAiBtn" style="background:#1a8a6e;color:#fff;border:none;">Apply to Schedule</button>
+        </div>
+    </section>
+
+    <!-- ── Pet Status Card ── -->
+    <section class="card status-card">
+        <h2>🐾 Pet Status</h2>
+        <p class="status-desc">How is {{ pet.name }} doing today?</p>
+
+        <div class="status-buttons">
+            <button class="status-btn" data-status="normal">😊 Normal</button>
+            <button class="status-btn caution" data-status="sick">🤒 Sick</button>
+            <button class="status-btn caution" data-status="not_eating">🍽️ Not Eating</button>
+            <button class="status-btn" data-status="timid">😟 Timid</button>
+            <button class="status-btn danger" data-status="vomiting">🤮 Vomiting</button>
+            <button class="status-btn caution" data-status="lethargic">😴 Lethargic</button>
+            <button class="status-btn danger" data-status="diarrhea">💩 Diarrhea</button>
+            <button class="status-btn" data-status="overweight">⚖️ Overweight</button>
+            <button class="status-btn good" data-status="energetic">⚡ Energetic</button>
+        </div>
+
+        <!-- Severity & description modal -->
+        <div class="status-detail-form" id="statusDetailForm" style="display:none;">
+            <h4>Describe the issue</h4>
+            <input type="hidden" id="statusType" value="">
+            <div class="form-group">
+                <label>Severity (1-5):</label>
+                <input type="range" id="statusSeverity" min="1" max="5" value="3" class="severity-slider">
+                <span id="severityLabel">3</span>
+            </div>
+            <div class="form-group">
+                <label>Notes (optional):</label>
+                <textarea id="statusDescription" rows="2" placeholder="Any details..."></textarea>
+            </div>
+            <div class="form-actions">
+                <button class="btn btn-primary btn-sm" id="submitStatusBtn">Save Status</button>
+                <button class="btn btn-sm btn-outline" id="cancelStatusBtn">Cancel</button>
+            </div>
+        </div>
+
+        <!-- Active statuses -->
+        <div class="active-statuses" id="activeStatuses">
+            <h4>Active Statuses</h4>
+            {% if active_statuses %}
+            {% for s in active_statuses %}
+            <div class="active-status-item" data-id="{{ s.id }}">
+                <span class="status-tag {{ s.status_type }}">{{ s.status_type | replace('_',' ') | title }}</span>
+                <span class="severity-dots">
+                    {% for i in range(s.severity) %}●{% endfor %}{% for i in range(5 - s.severity) %}○{% endfor %}
+                </span>
+                <button class="btn-resolve" data-id="{{ s.id }}" title="Resolve">✓</button>
+            </div>
+            {% endfor %}
+            {% else %}
+            <p class="empty-state">No active concerns — {{ pet.name }} is doing great!</p>
+            {% endif %}
+        </div>
+    </section>
+
+</main>
+
+<!-- ═══ Edit Pet Modal ═══ -->
+<div class="modal-overlay" id="editPetModal" style="display:none;">
+    <div class="modal-card">
+        <h2>Edit Pet Details</h2>
+        <form method="POST" action="{{ url_for('edit_pet') }}" class="auth-form">
+            <div class="form-group">
+                <label for="editName">Name</label>
+                <input type="text" id="editName" name="name" value="{{ pet.name }}" maxlength="100">
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="editSpecies">Species</label>
+                    <select id="editSpecies" name="species">
+                        <option value="Dog" {% if pet.species == 'Dog' %}selected{% endif %}>Dog</option>
+                        <option value="Cat" {% if pet.species == 'Cat' %}selected{% endif %}>Cat</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="editBreed">Breed</label>
+                    <input type="text" id="editBreed" name="breed" value="{{ pet.breed }}" maxlength="100">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="editAge">Age</label>
+                    <input type="number" id="editAge" name="age" value="{{ pet.age }}" min="0" max="30">
+                </div>
+                <div class="form-group">
+                    <label for="editWeight">Weight (kg)</label>
+                    <input type="number" id="editWeight" name="weight" value="{{ pet.weight_kg }}" min="0" step="0.1">
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="editPhoto">Photo URL</label>
+                <input type="url" id="editPhoto" name="photo_url" value="{{ pet.photo_url }}">
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Save Changes</button>
+                <button type="button" class="btn btn-outline" id="closeEditModal">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Paw print decorations -->
+<div class="paw-decor paw-1">🐾</div>
+<div class="paw-decor paw-2">🐾</div>
+<div class="paw-decor paw-3">🐾</div>
+<div class="paw-decor paw-4">🐾</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+{% endblock %}
